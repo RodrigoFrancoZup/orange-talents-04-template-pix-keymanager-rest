@@ -38,6 +38,8 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}")
     implementation("io.micronaut:micronaut-validation")
     implementation("io.micronaut.grpc:micronaut-grpc-client-runtime")
+    implementation("io.micronaut.beanvalidation:micronaut-hibernate-validator")
+    implementation("org.hibernate:hibernate-validator:6.1.6.Final")
 
     runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
     runtimeOnly("ch.qos.logback:logback-classic")
@@ -47,6 +49,8 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:testcontainers")
+    testImplementation("org.mockito:mockito-inline:3.11.1")
+    testImplementation("com.h2database:h2")
 
 }
 
