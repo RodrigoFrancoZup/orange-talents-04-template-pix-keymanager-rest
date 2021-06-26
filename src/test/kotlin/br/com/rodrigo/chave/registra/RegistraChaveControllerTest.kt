@@ -1,19 +1,14 @@
 package br.com.rodrigo.chave.registra
 
 import br.com.rodrigo.*
-import br.com.rodrigo.chave.util.exception.handler.GlobalStatusExceptionHandler
-import br.com.rodrigo.chave.util.factory.KeyManagerGrpcClientFactory
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
-import io.micronaut.context.annotation.Factory
 import io.micronaut.context.annotation.Replaces
 import io.micronaut.http.HttpRequest
 import io.micronaut.http.HttpStatus
 import io.micronaut.http.client.HttpClient
 import io.micronaut.http.client.annotation.Client
 import io.micronaut.http.client.exceptions.HttpClientResponseException
-import io.micronaut.http.exceptions.HttpException
-import io.micronaut.http.hateoas.JsonError
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -22,8 +17,10 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
-
-@MicronautTest
+/*
+TEMOS QUE RODAR UM TESTE POR VEZ!
+ */
+@MicronautTest(rollback = true)
 internal class RegistraChaveControllerTest(
 
 ) {
@@ -84,7 +81,7 @@ internal class RegistraChaveControllerTest(
         Assertions.assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, erro.status)
     }
 
-
+//Teste 2 não funciona, eu pensava que fazia assim...
 //    @Test
 //    fun ` 2 deve ser retornado um httpstatus unprocessable entity ao cadastrar chave repetida`(){
 //
@@ -119,9 +116,11 @@ internal class RegistraChaveControllerTest(
 
     }
 
+    @Singleton
+    @Replaces(bean = KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class)
+    fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.java)
 
 }
-
 
 
 
