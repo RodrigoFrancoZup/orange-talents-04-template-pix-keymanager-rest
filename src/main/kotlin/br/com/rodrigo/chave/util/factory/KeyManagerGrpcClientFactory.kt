@@ -2,6 +2,7 @@ package br.com.rodrigo.chave.util.factory
 
 import br.com.rodrigo.KeyManagerConsultaGrpcServiceGrpc
 import br.com.rodrigo.KeyManagerGrpcServiceGrpc
+import br.com.rodrigo.KeyManagerListaChavesGrpcServiceGrpc
 import br.com.rodrigo.KeyManagerRemoveGrpcServiceGrpc
 import io.grpc.ManagedChannel
 import io.micronaut.context.annotation.Factory
@@ -34,4 +35,7 @@ class KeyManagerGrpcClientFactory(@GrpcChannel("key-manager-grpc-channel") val c
 
     @Singleton
     fun keyManagerDetalheGrpcStub() = KeyManagerConsultaGrpcServiceGrpc.newBlockingStub(channel)
+
+    @Singleton
+    fun keyManagerListaGrpcStub() = KeyManagerListaChavesGrpcServiceGrpc.newBlockingStub(channel)
 }

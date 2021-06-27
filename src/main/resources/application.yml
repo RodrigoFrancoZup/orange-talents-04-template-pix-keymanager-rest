@@ -22,3 +22,6 @@ grpc:
       plaintext: true
       max-retry-attempts: 5
 
+jackson:
+  serialization:
+    writeDatesAsTimestamps: false
