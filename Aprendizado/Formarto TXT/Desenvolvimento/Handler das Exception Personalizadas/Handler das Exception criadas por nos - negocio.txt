@@ -1,0 +1,17 @@
+Já criamos um Handler para tratar as Exeception do tipo Status, essas eram lançadas pela API gRPC. Agora, caso quisessesmo tratar as Execeptions do tipo Exeception, pois podemos as fazes querer lançar uma Excpetion criada por nós mesmos, tipo ChaveInexistenteException, como tratariamos isso?
+
+Bastaria seguir a mesma logica do Handler de StatusExeception, ou seja, criar uma classe com nome qualquer, nesse caso escolhi GlobalExceptionHandler, anotá-la com @Singleton, implementar a interface ExceptionHandler<>, nos diamantes devemos por o tipo de erro que queremos pegar e como vamos responder, no caso ficaria assim:ExceptionHandler<Exception, HttpResponse<Any>>
+Após isso basta implementar o método que herdamos ao implementar a interface. Ficaria mais ou menos assim:
+
+@Singleton
+class GlobalExceptionHandler : ExceptionHandler<Exception, HttpResponse<Any>> {
+
+    override fun handle(request: HttpRequest<*>?, exception: Exception): HttpResponse<Any> {
+        
+        if (exception is IllegalAccessException) {
+            //faça alguma coisa
+        }
+
+        return HttpResponse.badRequest()
+    }
+}

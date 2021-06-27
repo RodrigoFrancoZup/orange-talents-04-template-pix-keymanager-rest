@@ -1,0 +1,106 @@
+{
+	"info": {
+		"_postman_id": "a63b8779-3ba1-4d3d-9bf0-c81fad9dfd6d",
+		"name": "Key-manager-REST",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"tipoChave\":\"CELULAR\",\r\n    \"chave\":\"+5535999990000\",\r\n    \"tipoConta\": \"CONTA_CORRENTE\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"cliente",
+						"5260263c-a3c1-4727-ae32-3bdb2538841b",
+						"pix"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "localhost:8080/pix",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"pixId\":\"284f5b33-8d74-4633-9414-e1299c4acaf9\",\r\n    \"clienteId\":\"5260263c-a3c1-4727-ae32-3bdb2538841b\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/pix",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"pix"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix/580ec2b0-86af-4877-aa8c-c7b33da22679",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix/580ec2b0-86af-4877-aa8c-c7b33da22679",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"cliente",
+						"5260263c-a3c1-4727-ae32-3bdb2538841b",
+						"pix",
+						"580ec2b0-86af-4877-aa8c-c7b33da22679"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"cliente",
+						"5260263c-a3c1-4727-ae32-3bdb2538841b",
+						"pix"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

@@ -1,0 +1,120 @@
+Vamos expor agora o detalhamento de uma conta Pix, ou seja, vamos criar um endpoint REST que em seu corpo haverá um client gRPC que consumirá o serviço de detalhamento de chave Pix.
+Lembre-se que que o serviço de detalhe de chave Pix no gRPC tinha dois tipos de REQUEST, pois ele usava o recurso oneOf, segundo a regra de negócio a request formada por pixId e clientId é a request que pode ser exposta para serviços externos, logo vamos usar essa request.
+
+A primeira coisa a se fazer é adicionar na classe KeyManagerGrpcClientFactory uma função que irá criar o client (ou Stub) do serviço de detalhamento do gRPC. Ficando assim:
+@Singleton
+fun keyManagerDetalheGrpcStub() = KeyManagerConsultaGrpcServiceGrpc.newBlockingStub(channel)
+
+Agora podemos criar a classe DetalheChaveController e nela um atributo grpcClient do tipo KeyManagerConsultaGrpcServiceGrpc.newBlockingStub. Devemos criar esse no construtor para ele ser injetado pelo Micronaut. Ficando assim:
+@Controller("/pix")
+class DetalheChaveController (@Inject val grpcClient: KeyManagerConsultaGrpcServiceGrpc.KeyManagerConsultaGrpcServiceBlockingStub){
+}
+
+Agora vou criar a classe que irá representar/guardar os dados que o usuário digitará, ou seja, uma classe que chamamos de Form, Request, entre outros nomes - neste caso eu nem precisaria disso, pois o verbo http será @get e ele não aceita body, mas vou querer colocar nessa classe uma função de conversão, então para isolar resolvi fazer assim -. Vou chamar de DetalheChaveForm. Nessa classe vou cirar uma função que converterá esse objeto para uma request do serviço de gRPC, no caso para o tipo ConsultaChaveRequest. Ficando assim:
+@Introspected
+data class DetalheChaveForm(
+    @field:NotNull @field:ValidUUID val pixId: String,
+    @field:NotNull @field:ValidUUID val clientId: String
+) {
+
+    fun convertToConsultaChaveRequest(): ConsultaChaveRequest {
+        
+        val filtroPorIds = ConsultaChaveRequest.FiltroPorIds.newBuilder()
+            .setPixId(pixId)
+            .setIdentificadorCliente(clientId)
+            .build()
+
+        return ConsultaChaveRequest.newBuilder()
+            .setFiltroPorIds(filtroPorIds)
+            .build()
+    }
+}
+
+Agora vou criar a classe que irá representar/guardar os dados que o sistema irá apresentar ao usuário, ou seja, uma classe que chamamos de Response, DTO, entre outros nomes. Vou chamar de DetalheChaveDto. Nessa classe vou criar uma companion object com uma função que irá receber um objeto do tipo ConsultaChaveResponse (essa classe quem criou foi a compilação do arquivo .proto). Daí nessa função vou extrair os valores do objeto ConsultaChaveResponse e criar um objeto do tipo DetalheChaveDto e este sim será retornado ao usuário.
+Neste mesmo arquivo de classe (DetalheChaveDto) eu criei as classes ContaDto e TitularDto, pois o objeto ConsultaChaveResponse do arquivo .proto também tem esses dados.
+Ainda no arquivo da classe DetalheChaveDto eu criei duas funções para mapear os valores do ENUM do arquivo .proto para os ENUM's que eu criei. Veja como ficou essas classes e funçoes:
+
+data class DetalheChaveDto(
+    val clienteId: String,
+    val pixId: String,
+    val tipoChave: TipoChaveDto,
+    val chave: String,
+    val titular: TitularDto,
+    val conta: ContaDto,
+    val criadoEm: LocalDateTime
+
+) {
+
+    companion object {
+        fun builder(consultaChaveResponse: ConsultaChaveResponse): DetalheChaveDto {
+
+            val contaDto = ContaDto(insituicao = consultaChaveResponse.conta.instituicao,
+            agencia = consultaChaveResponse.conta.agencia, numero = consultaChaveResponse.conta.numero,
+            tipoConta = mapFromTipoContaMessageToTipoConta(consultaChaveResponse.conta.tipoContaMessage))
+
+            val titularDto = TitularDto(nome = consultaChaveResponse.titular.nome, cpf = consultaChaveResponse.titular.cpf)
+
+            val criadoEm = LocalDateTime.ofInstant(Instant.ofEpochSecond(consultaChaveResponse.criadoEm.seconds).minusNanos(
+                consultaChaveResponse.criadoEm.nanos.toLong()),ZoneId.of("UTC"))
+            
+            return DetalheChaveDto(clienteId = consultaChaveResponse.identificadorCliente, pixId = consultaChaveResponse.pixId,
+            tipoChave = mapFromTipoChaveMessageToTipoChave(consultaChaveResponse.tipoChaveMessage), chave = consultaChaveResponse.valorDaChave,
+            titular = titularDto, conta = contaDto, criadoEm = criadoEm)
+        }
+    }
+}
+
+data class ContaDto(
+    val insituicao: String,
+    val agencia: String,
+    val numero: String,
+    val tipoConta: TipoContaDto
+) {
+
+}
+
+data class TitularDto(
+    val nome: String,
+    val cpf: String
+) {
+
+}
+
+fun mapFromTipoContaMessageToTipoConta(tipoContaMessage: TipoContaMessage): TipoContaDto {
+    return when (tipoContaMessage) {
+        TipoContaMessage.CONTA_CORRENTE -> TipoContaDto.CONTA_CORRENTE
+        TipoContaMessage.CONTA_POUPANCA -> TipoContaDto.CONTA_POUPANCA
+        else -> throw RuntimeException("Falha ao converter TipoContaMessage em TipoContaDto")
+    }
+}
+
+fun mapFromTipoChaveMessageToTipoChave(tipoChaveMessage: TipoChaveMessage): TipoChaveDto {
+    return when (tipoChaveMessage) {
+        TipoChaveMessage.EMAIL -> TipoChaveDto.EMAIL
+        TipoChaveMessage.ALEATORIA -> TipoChaveDto.ALEATORIA
+        TipoChaveMessage.CELULAR -> TipoChaveDto.CELULAR
+        TipoChaveMessage.CPF -> TipoChaveDto.CPF
+        else -> throw java.lang.RuntimeException(" Falha ao convertar TipoChaveMessage em TipoChaveDto")
+    }
+}
+
+Por fim podemos implementar a função @Get da classe DetalheChaveController. Veja como ficou:
+
+@Controller("/cliente/{clienteId}")
+@Validated
+class DetalheChaveController ( val grpcClient: KeyManagerConsultaGrpcServiceGrpc.KeyManagerConsultaGrpcServiceBlockingStub){
+
+    @Get("/pix/{pixId}")
+    fun detalhe(@Valid @ValidUUID @NotNull pixId:String, @Valid @ValidUUID @NotNull clienteId:String): HttpResponse<DetalheChaveDto>{
+
+        val detalheChaveForm = DetalheChaveForm(pixId, clienteId)
+        val requestGrpc = detalheChaveForm.convertToConsultaChaveRequest()
+        val responseGrpc = grpcClient.consultaChave(requestGrpc)
+
+        val detalheChaveDto = DetalheChaveDto.builder(responseGrpc)
+
+        return HttpResponse.ok(detalheChaveDto)
+    }
+}
+
+

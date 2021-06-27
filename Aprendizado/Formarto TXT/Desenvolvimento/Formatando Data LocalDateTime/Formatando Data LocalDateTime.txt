@@ -1,0 +1,6 @@
+Ao fazer o detalhamento da de uma chave pix notamos que o campo criadoEm que é uma data do tipo LocalDateTime está sendo exibido como um Array. Isso se deu devido a maneira que o Jackson serializou o LocalDateTime, no caso o Jackson serializou esse tipo para o tipo Timestamp. 
+Para voltar a exibir em formato LocalDateTime podemos colocar no arquivo application.yml o seguinte trecho:
+
+jackson:
+  serialization:
+    writeDatesAsTimestamps: false

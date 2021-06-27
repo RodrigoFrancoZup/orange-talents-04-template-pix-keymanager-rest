@@ -1,0 +1,170 @@
+Vamos agora testar o endpoint (classe controller) que está expondo o serviço de listagem de chaves pix. A classe controller faz uso de um Client gRPC do serviço listagem e por isso vamos mockar esse objeto (client gRPC) no nosso teste, pois não queremos ficar dependente de um sistema que não está sob nosso controle.
+O primeiro passo será criar a classe ListaChaveControllerTest anotada com @MicronautTest.
+Como vamos utilizar o client gRPC (mesmo mockado) temos que ensinar como se cria um objeto desse tipo, pois o mesmo se utiliza de fábrica (@Factory) para isso, então na classe ListaChaveControllerTest vamos criar a seguinte função:
+@Singleton
+@Replaces(KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub::class)
+fun stubGrpc(): KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub {
+    return Mockito.mock(KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub::class.java)
+}
+
+Agora podemos criar a property que será o grpcCLient, pois agora o Micronaut já sabera injetar o mesmo. Podemos também ja criar o client do tipo Http, pois será esse o responsável por lançar a requsição na classe ListaChaveController, classe/enpoint que queremos testar. Veja como ficou a classe de teste até agora:
+
+@MicronautTest
+internal class ListaChaveControllerTest {
+
+    @field:Inject
+    lateinit var grpcClient: KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub
+    
+    @field:Inject
+    @Client("/")
+    lateinit var httpClient: HttpClient
+    
+    // ESCREVA AS FUNÇÕES @TEST AQUI!
+
+
+    @Singleton
+    @Replaces(KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub::class)
+    fun stubGrpc(): KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub {
+        return Mockito.mock(KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub::class.java)
+    }
+}
+
+Nesta classe de teste vou também criar a função retornaListaChavePixMessage, está sempre irá retornar uma lista de ChavePixMessage, esse tipo foi criado ao compilar o arquivo .proto, pois é uma classe lá do serviço gRPC. Eu vou precisar desse objeto para Mockar a resposta do gRPC. Veja como ficou essa função:
+
+fun retornaListaChavePixMessage(
+    instante: Instant,
+    pixIdEmail: String,
+    pixIdCelular: String
+): List<ChavePixMessage> {
+    val chaveEmail = ChavePixMessage.newBuilder()
+        .setCriadoEm(
+            Timestamp.newBuilder()
+                .setSeconds(instante.epochSecond)
+                .setNanos(instante.nano)
+                .build()
+        )
+        .setTipoContaMessage(TipoContaMessage.CONTA_CORRENTE)
+        .setValor("yuri@gmail.com")
+        .setTipoChaveMessage(TipoChaveMessage.EMAIL)
+        .setPixId(pixIdEmail)
+        .build()
+
+    val chaveCelular = ChavePixMessage.newBuilder()
+        .setCriadoEm(
+            Timestamp.newBuilder()
+                .setSeconds(instante.epochSecond)
+                .setNanos(instante.nano)
+                .build()
+        )
+        .setTipoContaMessage(TipoContaMessage.CONTA_CORRENTE)
+        .setValor("+5535988880000")
+        .setTipoChaveMessage(TipoChaveMessage.CELULAR)
+        .setPixId(pixIdCelular)
+        .build()
+
+    return listOf(chaveCelular, chaveEmail)
+}
+
+Agora veja como ficou as funções de teste:
+
+@Test
+fun `deve retornar uma lista de chave pix`() {
+
+    //CENARIO
+    val clienteId = "5260263c-a3c1-4727-ae32-3bdb2538841b"
+    val requestHttp = HttpRequest.GET<Any>("/cliente/${clienteId}/pix")
+
+    val instante = LocalDateTime.now().atZone(ZoneId.of("UTC")).toInstant()
+    val valorChaveEmail = "yuri@gmail.com"
+    val valorChaveCelular = "+5535988880000"
+
+    val requestGrpc = ListaChavesRequest.newBuilder()
+        .setIdentificadorCliente(clienteId)
+        .build()
+
+    val chavePixMessageList = retornaListaChavePixMessage(instante, valorChaveEmail, valorChaveCelular)
+    val responseGrp = ListaChavesResponse.newBuilder()
+        .setIdentificadorCliente(clienteId)
+        .addAllChaves(chavePixMessageList)
+        .build()
+
+    Mockito.`when`(grpcClient.listaChaves(requestGrpc)).thenReturn(responseGrp)
+
+    //AÇÃO
+    // val responseHttp = httpClient.toBlocking().exchange(requestHttp, Map::class.java ) ~ Essa linha funcionaria, mas eu não teria acesso a lista de chave pix!
+    val responseHttp = httpClient.toBlocking()
+        .exchange(requestHttp, Argument.mapOf(Argument.STRING, Argument.listOf(ChavePixDto::class.java)))
+
+    //VERIFICAÇÃO
+    Assertions.assertEquals(HttpStatus.OK, responseHttp.status)
+    Assertions.assertEquals(2, responseHttp.body()!![clienteId]!!.size)
+    Assertions.assertEquals(valorChaveEmail, responseHttp.body()!![clienteId]!![1].chave)
+    Assertions.assertEquals(valorChaveCelular, responseHttp.body()!![clienteId]!![0].chave)
+
+}
+
+
+@Test
+fun `deve retornar mapa vazio ao passar clienteId sem chave`() {
+
+    //CENARIO
+    val clienteId = UUID.randomUUID().toString()
+    val requestHttp = HttpRequest.GET<Any>("/cliente/${clienteId}/pix")
+
+    val requestGrpc = ListaChavesRequest.newBuilder()
+        .setIdentificadorCliente(clienteId)
+        .build()
+
+    val responseGrp = ListaChavesResponse.newBuilder()
+        .setIdentificadorCliente(clienteId)
+        .build()
+
+    Mockito.`when`(grpcClient.listaChaves(requestGrpc)).thenReturn(responseGrp)
+
+    //AÇÃO
+    // val responseHttp = httpClient.toBlocking().exchange(requestHttp, Map::class.java ) ~ Essa linha funcionaria, mas eu não teria acesso a lista de chave pix!
+    val responseHttp = httpClient.toBlocking()
+        .exchange(requestHttp, Argument.mapOf(Argument.STRING, Argument.listOf(ChavePixDto::class.java)))
+
+    //VERIFICAÇÃO
+    Assertions.assertEquals(HttpStatus.OK, responseHttp.status)
+    Assertions.assertTrue(responseHttp.body().isEmpty())
+
+}
+
+
+@Test
+fun `deve retornar badrequest ao informar um clienteId fora do padrao uudi`() {
+
+    //CENARIO
+    val clienteId = "123"
+    val requestHttp = HttpRequest.GET<Any>("/cliente/${clienteId}/pix")
+
+    val requestGrpc = ListaChavesRequest.newBuilder()
+        .setIdentificadorCliente(clienteId)
+        .build()
+
+    val responseGrp = ListaChavesResponse.newBuilder()
+        .setIdentificadorCliente(clienteId)
+        .build()
+
+    Mockito.`when`(grpcClient.listaChaves(requestGrpc)).thenReturn(responseGrp)
+
+    //AÇÃO
+    val erro = Assertions.assertThrows(HttpClientResponseException::class.java){
+        httpClient.toBlocking()
+            .exchange(requestHttp, Argument.mapOf(Argument.STRING, Argument.listOf(ChavePixDto::class.java)))
+    }
+
+    //VERIFICAÇÃO
+    Assertions.assertEquals(HttpStatus.BAD_REQUEST, erro.status)
+
+}
+
+Atente-se que houve uma pequena mudança ao chamar o serviço HTTP, pois o serviço lá na classe controller está retornando um Map<String, List<ChavePixDto>>, então o método para fazer a requisição http ficou:
+
+val responseHttp = httpClient.toBlocking()
+    .exchange(requestHttp, Argument.mapOf(Argument.STRING, Argument.listOf(ChavePixDto::class.java)))
+
+Deste jeito também funcionaria, mas eu não teria acesso aos itens da lista para verificar seus valorres nos Assertions, eu poderia apenas verificar o status da response:
+val responseHttp = httpClient.toBlocking().exchange(requestHttp, Map::class.java )

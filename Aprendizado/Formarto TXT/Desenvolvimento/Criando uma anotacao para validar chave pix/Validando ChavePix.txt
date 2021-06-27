@@ -1,0 +1,93 @@
+A validação do valor da Chave Pix é um pouco complexa, pois ela depende do tipo da chave que o usuário vai cadastrar, ou seja, se for Celular temos que validar de um jeito, se for CPF validaremos de outro jeito. Ou seja, o validador tem que levar em consideração dois atributos da classe ChavePix (ou da classe que irá ter as anotações, pode ser ChavePixRequest, etc..)
+Nesse caso o ideal é criamos uma anotação para classe e não para um atributo. Vamos criar a anotação @ValidPixKey e colocá-la em cima da classe RegistraChaveForm.
+Veja como fica a criação da anotação:
+
+@MustBeDocumented
+@Target(AnnotationTarget.CLASS, AnnotationTarget.TYPE)
+@Retention(AnnotationRetention.RUNTIME)
+@Constraint(validatedBy = [ValidPixKeyValidator::class])
+annotation class ValidPixKey(
+    val message: String = "chave Pix inválida (\${validatedValue.tipoChave})",
+    val groups: Array<KClass<Any>> = [],
+    val payload: Array<KClass<Payload>> = [],
+    )
+
+Devemos agora criar a implementação que essa anotação usa, no caso ValidPixKeyValidator. Podemos criá-la no mesmo arquivo da anotação ou em outra classe. Vamos fazer aqui no mesmo arquivo. Veja como ficou:
+
+@Singleton
+class ValidPixKeyValidator : ConstraintValidator<ValidPixKey, RegistraChaveForm>{
+    override fun isValid(
+        value: RegistraChaveForm?,
+        annotationMetadata: AnnotationValue<ValidPixKey>,
+        context: ConstraintValidatorContext
+    ): Boolean {
+        TODO("Not yet implemented")
+    }
+
+}
+
+Agora dentro do bloco da função isValid podemos validar com nossa regra de negócio a Chave Pix, pois agora teremos acesso a todos os atributos da classe RegistraChaveForm, pois ela foi anotada com @ValidPixKey.
+Mas aqui vamos fazer de maneira simples. Vamos adicionar a seguinta validação:
+
+@Singleton
+class ValidPixKeyValidator : ConstraintValidator<ValidPixKey, RegistraChaveForm>{
+    override fun isValid(
+        value: RegistraChaveForm?,
+        annotationMetadata: AnnotationValue<ValidPixKey>,
+        context: ConstraintValidatorContext
+    ): Boolean {
+        if (value?.tipoChave == null) {
+            return true
+        }
+
+        return value.tipoChave.valida(value.chave)
+        
+    }
+
+}
+
+Nesse caso estamos fazendo a verificação se o tipo de chave é nulo, se for já lança uma Exception. Caso não for, estamos chamando a função valida do objeto tipoChave que é um ENUM do objeto RegistraChaveForm. Ou seja, vamos adicionar a regra de negócio de validação diretamente nos membros do ENUM. A nossa validação vai conseguir chamar esse método independente de qual valor do ENUM e assim teremos o retorno se está válido ou não.
+
+Vamos adicionar ao nosso projeto a dependencia da implementação do Hibernate da Bean Validation, pois ela já traz algumas validações prontas:
+implementation("io.micronaut.beanvalidation:micronaut-hibernate-validator")
+implementation("org.hibernate:hibernate-validator:6.1.6.Final")
+
+Vamos adicionar a função valida no ENUM tipoChave. Veja como ficou o ENUM TipoChaveRequest:
+
+enum class TipoChaveRequest(val atributoGrpc: TipoChaveMessage) {
+    CPF(TipoChaveMessage.CPF) {
+        override fun valida(chave: String?): Boolean {
+            return CPFValidator().let {
+                it.initialize(null) //Vou passar a saber pq precisou desta linha!
+                it.isValid(chave,null)
+            }
+        }
+    },
+    CELULAR(TipoChaveMessage.CELULAR) {
+        override fun valida(chave: String?): Boolean {
+            if (chave == null) {
+                return false
+            }
+            return chave.matches("^\\+[1-9][0-9]\\d{1,14}\$".toRegex())
+        }
+    },
+    EMAIL(TipoChaveMessage.EMAIL) {
+        override fun valida(chave: String?): Boolean {
+            return EmailValidator().let {
+                it.isValid(chave,null)
+            }
+        }
+    },
+    ALEATORIA(TipoChaveMessage.ALEATORIA) {
+        override fun valida(chave: String?): Boolean {
+           return chave.isNullOrBlank()
+        }
+    };
+
+    abstract fun valida(chave: String?): Boolean
+}
+
+
+
+Usamos aqui as classes que vem do HibernateValidation para verificar se um valor segue a regra, por exemplo no campo/membro CPF usamos o CPFValidator que é classe/objeto do HibernateValidator e verificamos através do método isValid se o valor de chave recebida é valido.
+Veja que usamos a classe do HibernateValidation dentro da função valida(), essa é uma função abstrata da classe ENUM TipoChaveRequest.

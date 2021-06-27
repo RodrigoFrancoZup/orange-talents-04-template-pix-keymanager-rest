@@ -1,0 +1,56 @@
+Vamos agora expor a listagem das chaves pix de um cliente. Ou seja, vamos criar uma classe controller com uma função que em seu corpo terá um client gRPC do serviço de listagem de chave Pix e atavés desse client gRPC vamos fazer a requisição.
+Como vamos precisar usar o client gRPC do serviço de listagem, vamos ter que ir classe fábrica de client gRPC e ensinar como se cria uma client desse tipo. Ou seja, na classe KeyManagerGrpcClientFactory adicionar a seguinte função:
+@Singleton
+fun keyManagerListaGrpcStub() = KeyManagerListaChavesGrpcServiceGrpc.newBlockingStub(channel)
+
+Agora já podemos criar a classe controller, no caso chamei de ListaChaveController. Veja como ficou:
+@Controller("/cliente/{clienteId}")
+@Validated
+class ListaChaveController(val grpcClient: KeyManagerListaChavesGrpcServiceGrpc.KeyManagerListaChavesGrpcServiceBlockingStub) {
+    
+}
+
+Antes de implementar a classe controller, vou criar a classe ChavePixDto, essa classe será a representação de saída da chave pix que vou mostrar ao usuário. Nesta classe fiz um companion object para nele criar uma função que recebe um objeto do tipo ChavePixMessage (tipo do arquivo .proto, ou seja, ganhamos esse quando compilamos o .proto) e retorna um objeto do tipo ChavePixDto. Veja como ficou:
+data class ChavePixDto(
+    val pixId: String,
+    val tipoChave: TipoChaveDto,
+    val chave: String,
+    val tipoConta: TipoContaDto,
+    val criadoEm: LocalDateTime
+) {
+
+    companion object {
+        fun builder(chavePixMessage: ChavePixMessage): ChavePixDto {
+
+            val criadoEm = LocalDateTime.ofInstant(
+                Instant.ofEpochSecond(chavePixMessage.criadoEm.seconds).minusNanos(
+                    chavePixMessage.criadoEm.nanos.toLong()
+                ), ZoneId.of("UTC")
+            )
+
+            return ChavePixDto(
+                pixId = chavePixMessage.pixId,
+                tipoChave = mapFromTipoChaveMessageToTipoChave(chavePixMessage.tipoChaveMessage),
+                chave = chavePixMessage.valor,
+                tipoConta = mapFromTipoContaMessageToTipoConta(chavePixMessage.tipoContaMessage),
+                criadoEm = criadoEm
+            )
+        }
+    }
+}
+
+
+Agora vou finalizar a classe ListaChaveController. Nela criei a funçao lista(), que irá retornar um HttpResponse de Map, esse map vai ter como chave o id do cliente que terá suas chavex pix listada e os valores do map serão as chaves pix que o cliente possui. Veja como ficoua função:
+@Get("/pix")
+fun lista(@NotNull @ValidUUID clienteId: String): HttpResponse<Map<String, List<ChavePixDto>>>{
+
+    val grpcRequest = ListaChavesRequest.newBuilder().setIdentificadorCliente(clienteId).build()
+    val grpcResponse = grpcClient.listaChaves(grpcRequest)
+
+    val chavePixDtoList = grpcResponse.chavesList.map {
+        ChavePixDto.builder(it)
+    }
+
+    return HttpResponse.ok(mapOf(Pair(clienteId, chavePixDtoList)))
+}
+

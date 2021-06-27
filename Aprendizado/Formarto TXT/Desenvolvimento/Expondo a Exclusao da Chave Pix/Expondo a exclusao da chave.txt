@@ -1,0 +1,71 @@
+Vamos agora querer expor o serviço de exclusão da chave pix, esse serviço é um gRPC.
+
+A primeira coisa a ser feita é ir na classe de fábrica de cliente gRPC (KeyManagerGrpcClientFactory) e configurar para o micronaut saber injetar um client desse serviço, ficando assim:
+
+@Singleton
+fun keyManagerRemoveGrpcStub() = KeyManagerRemoveGrpcServiceGrpc.newBlockingStub(channel)
+
+O segundo passo é criar a classe controller que irá expor esse serviço ao usuário final, no caso criamos a classe RemoveChaveController, classe anotada com @Controller @Validated e com uma função chamada remove(), veja como ficou:
+@Controller("/pix")
+@Validated
+class RemoveChaveController(
+    val grpcClient: KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub
+) {
+
+    @Delete
+    fun remove() {
+
+    }
+
+}
+
+O tereicro passo agora é criar a classe que será a representação dos dados informados pelo usuário, chamaos de classe DTO, FORM, request, entre outros nome. Nesse caso chamei de RemoveChaveForm. Nessa classe ainda criei uma função para criar um objeto do tipo RemoveChaveRequest, essa é uma classe que ao compilar o arquivo .proto nós ganhamos! Vamos precisar de um RemoveChaveRequest, pois é desse tipo o parâmetro do servico de gRPC!
+Veja como ficou:
+
+@Introspected
+data class RemoveChaveForm(
+    @field:ValidUUID @field:NotBlank val pixId: String,
+    @field:ValidUUID @field:NotBlank val clienteId: String
+) {
+
+    fun convertToRemoveChaveRequest(): RemoveChaveRequest {
+        return RemoveChaveRequest.newBuilder()
+            .setIdentificadorCliente(clienteId)
+            .setPixId(pixId)
+            .build()
+    }
+
+}
+
+Quarto passo é criar uma classe que representa os dados que vamos retornar ao usuário final. Eu chamei de classe RemoveChaveDto. Como o serviço de deletar uma chave do gRPC retorna o ID da chave deletada eu vou retronar essa informação ao usuário final. Criei uma função builder, dentro de companion object para eu poder chamar essa classe e repassar a ela o objeto response do gRPC, através dele é que vamos contruir a saída para o usuario. Veja como ficou:
+
+data class RemoveChaveDto(val pixId: String) {
+
+    companion object {
+        fun builder(registraChaveResponse: RegistraChaveResponse): RemoveChaveDto {
+            return RemoveChaveDto(registraChaveResponse.pixId)
+        }
+    }
+}
+
+Agora o que falta é voltar na classe controller, no caso RemoveChaveController e no seu corpo chamar o serviço do gRPC que deleta chava. Veja como ficou:
+
+@Controller("/pix")
+@Validated
+class RemoveChaveController(
+    val grpcClient: KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub
+) {
+
+    @Delete
+    fun remove(@Valid @Body form: RemoveChaveForm): HttpResponse<RemoveChaveDto> {
+
+        val responseGrpc = grpcClient.removeChave(form.convertToRemoveChaveRequest())
+
+        val removeChaveDto = RemoveChaveDto.builder(responseGrpc)
+
+        return HttpResponse.ok(removeChaveDto)
+    }
+
+}
+
+Para testar, basta ir no postman, fazer uma requsição @Delete para localhost:8080/pix e no body passar pixId = id da chave e clienteId = id do cliente.

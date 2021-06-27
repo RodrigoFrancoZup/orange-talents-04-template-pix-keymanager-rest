@@ -1,0 +1,120 @@
+Vamos agora expor ao cliente final (usuário) o registro de chave pix, esse registro é feito lá na aplicação key-manager-grpc.
+Essa exposição será feita da seguinte forma: vamos criar uma classe controller e mapear um método/função para requisição de registrar chave pix. Quando a requisição chegar a essa função ela será tratada por um Client gRPC que consumirá a API key-manager-grpc.
+
+Lembre-se que cada operação  que queremos fazer (neste caso Registro de Chave Pix) é um serviço do gRPC e para cada serviço há uma maneira de se criar um Client (Factory). A factory para criar o Client do serviço Registro de Chave Pix já foi feita na atividade anterior (Setup Aplicação), veja como ficou: 
+
+@Factory
+class KeyManagerGrpcClientFactory(@GrpcChannel("key-manager-grpc-channel") val channel: ManagedChannel) {
+
+    //Essa é a fábrica de Client do serviço de Registrar Chave Pix
+    @Singleton
+    fun keyManagerGrpcStub() = KeyManagerGrpcServiceGrpc.newBlockingStub(channel)
+
+}
+
+Lembre-se também que é necessário termos nesse projeto o arquivo .proto do projeto key-manager-grpc.
+
+Vamos agora começar o desenvolvimento dessa atividade. Siga o passo a passo:
+
+1) Criar a classe que irá receber a requisição para cadastrar uma chave pix, no caso será RegistraChaveController:
+
+@Controller("/cliente/{clienteId}")
+@Validated
+class RegistraChaveController(
+    val grpcCliente: KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub
+) {
+
+    @Post("/pix")
+    fun registra(): HttpResponse<Any>{
+
+        return HttpResponse.ok()
+    }
+
+}
+
+Veja que toda requisição dessa classe o usuário terá que informar o {clientId};
+O construtor dessa classe injeta o client gRPC do serviço que registra chave pix;
+E na função @Post é onde vamos fazer a lógica para cadastrar a chave.
+
+2) Vamos criar agora a classe RegistroChaveForm, ela será a classe "casca" dos valores que o usuário irá digitar. Ficando assim:
+
+@Introspected
+data class RegistroChaveForm(
+    val tipoChave: TipoChaveRequest,
+    val chave: String?,
+    val tipoConta: TipoContaRequest
+) {
+}
+
+3) Veja que vamos precisar de dois ENUM's, um TipoContaRequest e outro TipoChaveRequest. Veja como ficaram:
+enum class TipoChaveRequest {
+    CPF, CELULAR, EMAIL, ALEATORIA
+}
+
+enum class TipoContaRequest {
+    CONTA_CORRENTE, CONTA_POUPANCA
+}
+
+4) Para podermos enviar uma requisição ao serviço de registro de chave utilizando o Client gRPC devemos criar uma requsição do tipo que o Client exige. Ou seja, temos que converter os dados enviados pelo usuário, no caso o nosso RegistroChaveForm em RegistroChaveRequest do gRPC.
+Para esse conversão podemos fazer uma função na classe RegistroChaveForm chamada convertToRegistroChaveRequest(), ficando assim:
+
+fun convertToRegistraChaveRequest(clienteId: UUID): RegistraChaveRequest{
+    
+}
+
+Veja que a função está recebendo uma parâmetro, no caso é o Identificador do Cliente que o usuário vai passar pelo PATH da requsição. Teremos que pegar essa path na classe controller e repassar para este método, pois para criar um RegistraChaveRequest se faz necessário o identificador de cliente.
+Nessa conversão teremos que mapear os tipo ENUM's da nossa aplicação para os ENUM's da aplicação do gRPC. Poderiamos fazer um tanto de IF para isso, ou então (melhor maneira) podemos mudar os nosso ENUM's. A declaração do ENUM passar a ter uma especie de "Construtor" que recebe um parâmetro, ou seja, cada membro do ENUM terá um atributo/property, só que os valores não precisa serem iguais, ou seja, cada membro tem um atributo com valor diferente.
+Neste caso o nosso ENUM TipoContaRequest passa a ter o parâmetro atributoGrpc: TipoContaMessage, veja que o tipo desse parâmetro é o ENUM lá do gRPC (arquivo .proto que gerou). Agora todo membro do enum TipoContaRequest tem que ter o atributo/property atributoGrpc que será do tipo TipoContaMessage, so que para o membro CONTA_CORRENTE do nosso enum esse atributo vai ter um valor, para o membro CONTA_POUPANCA terá outro valor. Os valores vão ser do ENUM TipoContaMessage do gRPC, pois assim vamos estar mapeando o nosso ENUM para o ENUM do gRPC. Veja como ficou:
+
+enum class TipoContaRequest (val atributoGrpc: TipoContaMessage){
+    CONTA_CORRENTE(TipoContaMessage.CONTA_CORRENTE) ,
+    CONTA_POUPANCA(TipoContaMessage.CONTA_POUPANCA)
+}
+
+Vamos fazer o mesmo com ENUM TipoChaveRequest:
+enum class TipoChaveRequest(val atributoGrpc: TipoChaveMessage) {
+    CPF(TipoChaveMessage.CPF),
+    CELULAR(TipoChaveMessage.CELULAR),
+    EMAIL(TipoChaveMessage.EMAIL),
+    ALEATORIA(TipoChaveMessage.ALEATORIA)
+}
+
+
+5) Agora podemos de fato fazer a conversão de RegistroChaveForm em RegistroChaveRequest, através da função convertToRegistraChaveRequest(). Veja como ela ficou:
+
+fun convertToRegistraChaveRequest(clienteId: UUID): RegistraChaveRequest{
+    return RegistraChaveRequest.newBuilder()
+        .setIdentificadorCliente(clienteId.toString())
+        .setTipoChaveMessage(tipoChave.atributoGrpc)
+        .setTipoContaMessage(tipoConta.atributoGrpc)
+        .setValorDaChave(chave ?: "")
+        .build()
+}
+
+Veja que para construir um objeto do tipoRegistraChaveRequest nós utilizamos um Builder, pois essa classe não foi cirada por nós e sim pelo .proto!
+
+6) Agora podemos voltar na classe RegistraChaveController e terminar de implementar a função @Post que irá consumir o serviço de registro do gRPC. A classe por enquanto (já funcional) ficará assim:
+
+@Controller("/cliente/{clienteId}")
+@Validated
+class RegistraChaveController(
+    val grpcCliente: KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub
+) {
+
+    @Post("/pix")
+    fun registra(clienteId: UUID, @Body @Valid form: RegistraChaveForm): HttpResponse<Any> {
+
+        val requestGrpc = form.convertToRegistraChaveRequest(clienteId)
+        val responseGrpc = grpcCliente.registraChave(requestGrpc)
+        
+        val uri = UriBuilder.of("/cliente/{clienteId}/pix/{pixId}")
+            .expand(mutableMapOf(Pair("clienteId", clienteId), Pair("pixId", responseGrpc.pixId)))
+
+        return HttpResponse.created(responseGrpc.pixId, uri)
+    }
+
+}
+
+
+
+

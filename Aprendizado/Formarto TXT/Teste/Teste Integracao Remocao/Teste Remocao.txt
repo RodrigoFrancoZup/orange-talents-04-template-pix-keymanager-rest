@@ -1,0 +1,104 @@
+Vamos agora criar o teste de remoção, para isso vou criar a classe chamada RemoveChaveControllerTest. Para realizar esse teste vou precisar de um client Http para poder requisitar o serviço de remoção e também vou precisar "Mockar" um client gRPC, pois dentro da classe RemoveChaveController, na função @Delete há o uso de um client gRPC.
+A classe ficará assim:
+
+@MicronautTest
+internal class RemoveChaveControllerTest {
+
+    @field:Inject
+    @field:Client("/")
+    lateinit var clientHttp: HttpClient
+    
+    @field:Inject
+    lateinit var grpcClient: KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub
+    
+    @Test
+    fun test(){
+        //ESCREVA SEU TESTE AQUI!
+    }
+
+
+    @Singleton
+    @Replaces(bean = KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub::class)
+    fun stubMock(): KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub {
+        return Mockito.mock(KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub::class.java)
+    }
+
+}
+
+Veja agora a classe com um teste:
+
+@MicronautTest
+internal class RemoveChaveControllerTest {
+
+    @field:Inject
+    @field:Client("/")
+    lateinit var clientHttp: HttpClient
+
+    @field:Inject
+    lateinit var grpcClient: KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub
+
+    @Test
+    fun `deve remover a chave pix e retornar o status 200`() {
+
+        //CENARIO
+        val pixId = UUID.randomUUID().toString()
+        val clientId = UUID.randomUUID().toString()
+        val bodyHttp = RemoveChaveForm(pixId, clientId)
+
+        val requestHttp = HttpRequest.DELETE("/pix", bodyHttp)
+
+        val requestGrpc = RemoveChaveRequest.newBuilder()
+            .setIdentificadorCliente(clientId)
+            .setPixId(pixId)
+            .build()
+
+        val responseGrpc = RegistraChaveResponse.newBuilder()
+            .setPixId(pixId)
+            .build()
+
+        Mockito.`when`(grpcClient.removeChave(requestGrpc)).thenReturn(responseGrpc)
+
+        //AÇÃO
+        val responseHttp = clientHttp.toBlocking().exchange(requestHttp, RemoveChaveDto::class.java)
+
+        //VERIFICAÇÃO
+        Assertions.assertEquals(HttpStatus.OK, responseHttp.status)
+    }
+
+@Test
+fun `deve retornar status 404 ao tentar uma chave pix inexistente`() {
+
+    //CENARIO
+    val pixId = UUID.randomUUID().toString()
+    val clientId = UUID.randomUUID().toString()
+    val bodyRequest = RemoveChaveForm(pixId, clientId)
+
+    val requestHttp = HttpRequest.DELETE("/pix", bodyRequest)
+
+    val grpcRquest = RemoveChaveRequest.newBuilder()
+        .setIdentificadorCliente(clientId)
+        .setPixId(pixId)
+        .build()
+
+    Mockito.`when`(grpcClient.removeChave(grpcRquest)).thenThrow(StatusRuntimeException(Status.NOT_FOUND))
+
+    //Ação
+    val erro = Assertions.assertThrows(HttpClientResponseException::class.java) {
+        clientHttp.toBlocking().exchange(requestHttp, Any::class.java)
+    }
+
+    //Verificação
+    Assertions.assertEquals(HttpStatus.NOT_FOUND, erro.status)
+
+}
+
+
+
+    @Singleton
+    @Replaces(bean = KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub::class)
+    fun stubMock(): KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub {
+        return Mockito.mock(KeyManagerRemoveGrpcServiceGrpc.KeyManagerRemoveGrpcServiceBlockingStub::class.java)
+    }
+
+}
+

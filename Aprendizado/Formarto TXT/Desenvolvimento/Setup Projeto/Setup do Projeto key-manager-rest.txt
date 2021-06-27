@@ -1,0 +1,85 @@
+Vamos agora criar um novo projeto. Esse será um cliente (vai consumir) do Key-manager-gRPC.
+Esse novo projeto embora a gente vá criar no site como sendo uma application do tipo gRPC ele será um REST, ou seja, ele terá classes controller, pois assim o usuário final irá fazer uma requisição que irá cair na classe Controller e dentro dessa classe controller haverá um Client gRPC que consumirá o serviço do projeto key-manager-grpc.
+
+Para começar acesse o site https://micronaut.io/launch/ e configure o projeto:
+Application Type = gRPC Application
+Java Version = 11
+Base Package = br.com.rodrigo
+Name = key-manager-rest
+Micronaut Version 2.5.6
+Language = Kotlin
+Build = Gradle
+Test Framework = Junit
+Em FEATURES, vou adicionar:  data-jpa, hibernate-jpa e postgres
+
+Fiz o download do projeto em formato .zip, descompactei e levei todos arquivos para a pasta do meu repositorio (Gerada após dar Fork no projeto desafio pix rest da Zup)
+
+Ao abrir o projeto na IDE lembre-se de adicionar na execução do projeto a Task Clean do Gradle. E tambpém lembre-se de habilitar na IDE IntelliJ a opção: Enable annotation processing
+
+Lembre-se! Em nosso projeto teremos que criar um Client para o serviço Key-manager-grpc, mas quem sabe criar um cliente desse tipo é uma classe que o próprio arquivo .proto da aplicação key-manager-grpc gera, ou seja, precisamos copiar o arquivo .proto do projeto key-manager-grpc e colocar em nosso projeto atual! 
+Após colar o arquivo .proto no projeto atual, basta compilar (Gradle Task = Clean CompileJava)!
+
+Para o Micronaut saber injetar um objeto que será Client gRPC é necessário criar uma fábrica especificando o serviço gRPC e o channel. Por isso vamos criar a classe KeyManagerGrpcClientFactory:
+
+@Factory
+class KeyManagerGrpcClientFactory {
+
+    @Singleton
+    fun keyManagerGrpcStub(@GrpcChannel("key-manager-grpc-channel") channel: ManagedChannel): KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub {
+        return KeyManagerGrpcServiceGrpc.newBlockingStub(channel)
+    }
+}
+
+Do jeito que foi feito a fábrica irá funcionar sem problemas, mas como temos diversos serviços declarados no arquivo .proto teremos que criar diversas fábricas e do jeito que estamos fazendo teremos que criar diversas classes. Vamos alterar o código para podermos ter uma classe e em cada função criar um tipo de client:
+
+@Factory
+class KeyManagerGrpcClientFactory(@GrpcChannel("key-manager-grpc-channel") val channel: ManagedChannel) {
+
+    //Essa é a fábrica de Client do serviço de Registrar Chave Pix
+    @Singleton
+    fun keyManagerGrpcStub(): KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub {
+        return KeyManagerGrpcServiceGrpc.newBlockingStub(channel)
+    }
+}
+
+Agora podemos dentro da classe KeyManagerGrpcClientFactory criar diversos clientes, ou seja, cada função criará um. Podemos apenas melhorar a maneira de se escrever a função, usando o recurso do Kotlin que diz que quando a função tem apenas um retorno (uma branch) podemos devolver logo apos a assinatura da função, ficando assim:
+
+@Singleton
+fun keyManagerGrpcStub() = KeyManagerGrpcServiceGrpc.newBlockingStub(channel)
+
+
+Na fábrica anterior nós criamos um canal com o nome key-manager-grpc-channel, esse canal é a configuração de acesso da aplicação que queremos consumir, logo teremos que configurá-lo com mais detalhes. Vamos aproveitar e definir algumas configurações do client que vamos criar. No arquivo application.yml adicionar:
+
+grpc:
+  client:
+    plaintext: true
+    max-retry-attempts: 10
+  channels:
+    key-manager-grpc-channel:
+      address: 'localhost:50051'
+      plaintext: true
+        max-retry-attempts: 5
+
+Por termos criado esse projeto com o tipo Application gRPC, ele só veio com o servidor de gRPC. Para rodar como API REST teremos que configurar. 
+No arquivo build.gradle, na seção micronaut adicionar:
+	runtime "netty"
+Na seção dependencies adicionar a linha:
+	implementation("io.micronaut.grpc:micronaut-grpc-client-runtime")
+Na seção dependencies remover/comentar a linha:
+	implementation("io.micronaut.grpc:micronaut-grpc-runtime")
+
+Por fim, como foi adicionado as dependencias data-jpa, hibernate-jpa e postgres teremos que configurar um banco de dados, então no arquivo application.yml foi adicionado:
+
+datasources:
+  default:
+    url: jdbc:postgresql://localhost:5433/rest-key
+    driverClassName: org.postgresql.Driver
+    username: postgres
+    password: postgres
+    schema-generate: CREATE_DROP
+    dialect: POSTGRES
+jpa.default.properties.hibernate.hbm2ddl.auto: update
+
+	
+
+

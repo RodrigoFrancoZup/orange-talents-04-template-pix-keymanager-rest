@@ -1,0 +1,31 @@
+Vamos agora criar um teste de unidade para testar a classe Enum TipoChaveRequest, pois essa classe tem uma função abstrata, que cada membro implementa. A função se chamada valida().
+Para criar o teste basta selecionar o Enum TipoChaveRequest, aperta "alt+enter" e selecionar para criar um teste. A classe TipoChaveRequestTest será criada!
+Veja como ficou a classe e alguns testes:
+
+internal class TipoChaveRequestTest{
+
+    @Test
+    fun `deve retornar true ao validar uma chave do tipo CPF com valor correto`(){
+
+        //Cenario
+        val cpf = "210.970.230-36"
+
+        //Ação
+        val resposta = TipoChaveRequest.CPF.valida(cpf)
+
+        //Verificação
+        Assertions.assertTrue(resposta)
+    }
+
+    @Test
+    fun `deve retornar false ao validar uma chave do tipo CPF com valor incorreto`(){
+
+        //Cenario
+        val cpf = "210"
+
+        //Ação
+        val resposta = TipoChaveRequest.CPF.valida(cpf)
+
+        //Verificação
+        Assertions.assertFalse(resposta)
+    }

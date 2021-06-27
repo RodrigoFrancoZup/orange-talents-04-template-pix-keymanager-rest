@@ -1,0 +1,69 @@
+{\rtf1\ansi\ansicpg1252\deff0\nouicompat{\fonttbl{\f0\fnil\fcharset0 Arial;}{\f1\fmodern JetBrains Mono;}}
+{\colortbl ;\red169\green183\blue198;}
+{\*\generator Riched20 10.0.19041}\viewkind4\uc1 
+\pard\sa200\sl276\slmult1\fs24\lang22 Vamos agora testar a classe RegistraChaveController, nessa classe existe um Client gRPC que vamos ter que Mockar (simular), pois estamos interessados em testar o que \'e9 de nossa responsabilidade e apenas coisas que podemos arrumar caso esteja errado.\par
+
+\pard\box\brdrdash\brdrw0 \sa200\sl276\slmult1 Vamos selecionar a classe RegistraChaveController, apertar "alt + enter" e selecionar para criar um test. A classe RegistraChaveController ser\'e1 criada. Veja como ela deve ficar:\par
+\par
+@MicronautTest\line internal class RegistraChaveControllerTest\{\line\line\}\par
+\par
+Agora podemos criar as fun\'e7\'f5es  que v\'e3o fazer os testes dentro dessa classe. \par
+\par
+Primeiro vamos pensar no que precisaremos para fazer o teste, nesete caso vamos salvar algo? N\'e3o, ent\'e3o n\'e3o precisamos do Repository. Vamos precisar consumir um endpoint? Sim, o nosso /cliente/\{clienteId\}\lang1046 /pix com o verbo POST, logo precisamos de um Client Http. Neste endpoint h\'e1 consuma\'e7\'e3o de servi\'e7o externo? Sim! Consome uma API externa de gRPC. Queremos usar ele de fato? N\'e3o! Ent\'e3o vamos ter que criar um Client gfRPC mockado!\lang22\par
+Para criar o Client http basta adicionar nesta classe a property:\par
+@field:Inject\line @field:Client("/")\line lateinit var  clientHttp: HttpClient\par
+\lang1046 A "/" indica que o endere\'e7o base que isso client consumir\'e1 \'e9 localhost\par
+\par
+Poderiamos criar um teste sem Mockar o Client do gRPC, mas da\'ed estariamos dependendo do servi\'e7o gRPC verdadeiro, por exemplo, se ele cair o teste para de funcionar e n\'e3o poderemos fazer nada, pois se trata de um servi\'e7o externo. O teste dessa forma seria assim:\par
+\par
+@MicronautTest\line internal class RegistraChaveControllerTest(\line\line ) \{\line     @field:Inject\line     @field:Client("/")\line     lateinit var clientHttp: HttpClient\par
+    @Test\line     fun `deve ser retornado um httpstatus created`() \{\line\line         val chaveRequest = RegistraChaveForm(TipoChaveRequest.\i EMAIL\i0 , "olocothgfdmsthfghdgytfghd@gmail.com", TipoContaRequest.\i CONTA_CORRENTE \i0 )\line\line         val request = HttpRequest.POST("/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix", chaveRequest)\line\line         val response = clientHttp.toBlocking().exchange(request, String::class.\i java\i0 )\line\line         Assertions.assertEquals(HttpStatus.\i CREATED\i0 , response.\i status\i0 )\line     \}\par
+\par
+Nesse codigo tivemos que criar um body de requisoi\'e7\'e3o que chamei de chaveRequest;\par
+Tive que criar uma Request em s\'ed, e ela \'e9 feita com seu verbo, com URI e body;\par
+Por fim utilizo o cliente http passando a request e a classe que ser\'e1 o retorno (essa tem que ser do mesmo tipo do m\'e9todo controller que estou testando)\par
+\par
+\par
+Vamos agora de fato fazer um teste de integra\'e7ao seguindo os bons conceitos de mockar coisas externas:\par
+Para podemos criar o Client gRPC Mockado devemos ter uma dependencia especial do Mockito em nosso projeto, no caso:\par
+\tab testImplementation("org.mockito:mockito-inline:3.11.1")\par
+\lang22 Pois vamos mockar uma classe n\'e3o OPEN e para piorar a classe que vamos mockar n\'e3o foi feita por n\'f3s, ela \'e9 feita pela compila\'e7\'e3o do arquivo .proto. Ap\'f3s adicionar essa dependencia temos que criar a pasta mockito-extensions dentro da pasta test/resources e dentro de mickito-extensions criar um arquivo chamado org.mockito.plugins.MockMaker e seu conte\'fado ser\'e1:\par
+\tab mock-maker-inline\par
+Agora vamos criar a classe \lang1046 MockitoStubFactory, essa pode ser em um arquivo separado ou no mesmo arquivo da classe \lang22  \lang1046 RegistraChaveControllerTest. Vamos criar em um arquivo separado. Dentro dessa classe vamos ter uma fun\'e7\'e3o para mockar, veja como ficou:\par
+ \par
+@Factory\line @Replaces(factory = KeyManagerGrpcClientFactory::class)\line internal class MockitoStubFactory \{\line\line     @Singleton\line     fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.\i java\i0 )\line\}\par
+\lang22\par
+Isso se faz necess\'e1rio, pois para criar o cliente gRPC precisamos de um Factory, tanto \'e9 que no desenvolvimento j\'e1 tinhamos a classe \lang1046 KeyManagerGrpcClientFactory e \'e9 at\'e9 por isso que colocamos essa mesma classe com anota\'e7\'e3o @Replaces, pois agora estamos indicando que ao executar o teste quando for pra usar algo da classe KeyManagerGrpcClientFactory ser\'e1 susbstituido pelo Bean criado pela classe MockitoStubFactory, ou seja, teremos uma Factory para o c\'f3digo em produ\'e7\'e3o e outro para Test.\par
+Lembre-se: \par
+O KeyManagerGrpcClientFactory \'e9 a f\'e1brica que j\'e1 tinhamos para criar gRPC client no ambiente de desenvolvimento;\par
+A classe KeyManagerGrpcServiceGrpc \'e9 dada ao compilar o arquivo .proto e KeyManagerGrpcServiceBlockingStub idem, s\'f3 que esse tamb\'e9m \'e9 responsavel de entregar o client gRPC.\par
+\lang22\par
+\lang1046 ATUALIZA\'c7\'c3O!!!!\par
+\par
+N\'e3o precisamos mais mockar a Factory inteira, ou seja, n\'e3o precisamos mais criar a classe MockitoStubFactory. Basta colocar na classe de teste o:\par
+\par
+
+\pard\box\brdrdash\brdrw0 \sa200\sl276\slmult1 @Singleton\line @Replaces(bean = KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class)\line fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.\i java\i0 )\par
+
+\pard\box\brdrdash\brdrw0 \sa200\sl276\slmult1\par
+\cf1\f1\fs18\lang22\par
+\cf0\f0\fs24\lang1046 Agora podemos cirar na classe teste uma property do tipo client gRPC, no caso:\par
+@field:Inject\line lateinit var grpcClient: KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub\par
+\par
+Veja como ficou a classe de teste completa utilizando mock:\par
+\par
+@MicronautTest\line internal class RegistraChaveControllerTest(\line\line ) \{\line     @field:Inject\line     @field:Client("/")\line     lateinit var clientHttp: HttpClient\line\line     @field:Inject\line     lateinit var grpcClient: KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub\line\line\line     @Test\line     fun `deve ser retornado um httpstatus created`() \{\line\line         //Cenario\line         val chaveRequestHttp =\line             RegistraChaveForm(TipoChaveRequest.\i EMAIL\i0 , "yuri@gmail.com", TipoContaRequest.\i CONTA_CORRENTE\i0 )\line         val requestHttp = HttpRequest.POST("/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix", chaveRequestHttp)\line\line         val requestGrpc = RegistraChaveRequest.newBuilder()\line             .setIdentificadorCliente("5260263c-a3c1-4727-ae32-3bdb2538841b")\line             .setTipoChaveMessage(TipoChaveMessage.\i EMAIL\i0 )\line             .setTipoContaMessage(TipoContaMessage.\i CONTA_CORRENTE\i0 )\line             .build()\line\line         val pixIdCriado = UUID.randomUUID().toString()\line         val responseGrpc = RegistraChaveResponse.newBuilder()\line             .setPixId(pixIdCriado)\line             .build()\line\line         //Mockito.`when`(grpcClient.registraChave(requestGrpc)).thenReturn(responseGrpc)\line         Mockito.`when`(grpcClient.registraChave(Mockito.any())).thenReturn(responseGrpc)\line\line         //A\'e7\'e3o\line         val responseHttp = clientHttp.toBlocking().exchange(requestHttp, String::class.\i java\i0 )\line\line         //Verifica\'e7\'e3o\line         Assertions.assertEquals(HttpStatus.\i CREATED\i0 , responseHttp.\i status\i0 )\line         Assertions.assertTrue(responseHttp.body().\i contains\i0 (pixIdCriado))\line\line     \}\par
+\par
+
+\pard\box\brdrdash\brdrw0 \sa200\sl276\slmult1 @Singleton\line @Replaces(bean = KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class)\line fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.\i java\i0 )\par
+
+\pard\box\brdrdash\brdrw0 \sa200\sl276\slmult1\line\line\}\par
+\par
+A linha:\line\par
+//Mockito.`when`(grpcClient.registraChave(requestGrpc))\par
+.thenReturn(responseGrpc)\line\par
+foi comentada, pois aqui ela n\'e3o funciona e esta \'e9 muito comum em outros testes. Ela n\'e3o funciona porque a request que mandamos \'e9 uma classe gerada pela compila\'e7\'e3o do arquivo .proto, ou seja, n\'e3o foi feita por n\'f3s! E ela n\'e3o \'e9 data class e n\'e3o tem como n\'f3s implementarmos os metodos Equals & Hashcode - metodos que s\'e3o necess\'e1rios para garantir que o mesmo ser\'e1 simulado somente com os mesmos valores! Com objetos IDENTICOS!\cf1\f1\fs18\lang22\par
+\cf0\f0\fs24\line\par
+\par
+}
+ 

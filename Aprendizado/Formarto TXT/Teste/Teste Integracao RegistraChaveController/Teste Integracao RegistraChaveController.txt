@@ -1,0 +1,136 @@
+Vamos agora testar a classe RegistraChaveController, nessa classe existe um Client gRPC que vamos ter que Mockar (simular), pois estamos interessados em testar o que é de nossa responsabilidade e apenas coisas que podemos arrumar caso esteja errado.
+Vamos selecionar a classe RegistraChaveController, apertar "alt + enter" e selecionar para criar um test. A classe RegistraChaveController será criada. Veja como ela deve ficar:
+
+@MicronautTest
+internal class RegistraChaveControllerTest{
+
+}
+
+Agora podemos criar as funções  que vão fazer os testes dentro dessa classe. 
+
+Primeiro vamos pensar no que precisaremos para fazer o teste, nesete caso vamos salvar algo? Não, então não precisamos do Repository. Vamos precisar consumir um endpoint? Sim, o nosso /cliente/{clienteId}/pix com o verbo POST, logo precisamos de um Client Http. Neste endpoint há consumação de serviço externo? Sim! Consome uma API externa de gRPC. Queremos usar ele de fato? Não! Então vamos ter que criar um Client gfRPC mockado!
+Para criar o Client http basta adicionar nesta classe a property:
+@field:Inject
+@field:Client("/")
+lateinit var  clientHttp: HttpClient
+A "/" indica que o endereço base que isso client consumirá é localhost
+
+Poderiamos criar um teste sem Mockar o Client do gRPC, mas daí estariamos dependendo do serviço gRPC verdadeiro, por exemplo, se ele cair o teste para de funcionar e não poderemos fazer nada, pois se trata de um serviço externo. O teste dessa forma seria assim:
+
+@MicronautTest
+internal class RegistraChaveControllerTest(
+
+) {
+    @field:Inject
+    @field:Client("/")
+    lateinit var clientHttp: HttpClient
+    @Test
+    fun `deve ser retornado um httpstatus created`() {
+
+        val chaveRequest = RegistraChaveForm(TipoChaveRequest.EMAIL, "olocothgfdmsthfghdgytfghd@gmail.com", TipoContaRequest.CONTA_CORRENTE )
+
+        val request = HttpRequest.POST("/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix", chaveRequest)
+
+        val response = clientHttp.toBlocking().exchange(request, String::class.java)
+
+        Assertions.assertEquals(HttpStatus.CREATED, response.status)
+    }
+
+Nesse codigo tivemos que criar um body de requisoição que chamei de chaveRequest;
+Tive que criar uma Request em sí, e ela é feita com seu verbo, com URI e body;
+Por fim utilizo o cliente http passando a request e a classe que será o retorno (essa tem que ser do mesmo tipo do método controller que estou testando)
+
+
+Vamos agora de fato fazer um teste de integraçao seguindo os bons conceitos de mockar coisas externas:
+Para podemos criar o Client gRPC Mockado devemos ter uma dependencia especial do Mockito em nosso projeto, no caso:
+	testImplementation("org.mockito:mockito-inline:3.11.1")
+Pois vamos mockar uma classe não OPEN e para piorar a classe que vamos mockar não foi feita por nós, ela é feita pela compilação do arquivo .proto. Após adicionar essa dependencia temos que criar a pasta mockito-extensions dentro da pasta test/resources e dentro de mickito-extensions criar um arquivo chamado org.mockito.plugins.MockMaker e seu conteúdo será:
+	mock-maker-inline
+Agora vamos criar a classe MockitoStubFactory, essa pode ser em um arquivo separado ou no mesmo arquivo da classe  RegistraChaveControllerTest. Vamos criar em um arquivo separado. Dentro dessa classe vamos ter uma função para mockar, veja como ficou:
+ 
+@Factory
+@Replaces(factory = KeyManagerGrpcClientFactory::class)
+internal class MockitoStubFactory {
+
+    @Singleton
+    fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.java)
+}
+
+Isso se faz necessário, pois para criar o cliente gRPC precisamos de um Factory, tanto é que no desenvolvimento já tinhamos a classe KeyManagerGrpcClientFactory e é até por isso que colocamos essa mesma classe com anotação @Replaces, pois agora estamos indicando que ao executar o teste quando for pra usar algo da classe KeyManagerGrpcClientFactory será susbstituido pelo Bean criado pela classe MockitoStubFactory, ou seja, teremos uma Factory para o código em produção e outro para Test.
+Lembre-se: 
+O KeyManagerGrpcClientFactory é a fábrica que já tinhamos para criar gRPC client no ambiente de desenvolvimento;
+A classe KeyManagerGrpcServiceGrpc é dada ao compilar o arquivo .proto e KeyManagerGrpcServiceBlockingStub idem, só que esse também é responsavel de entregar o client gRPC.
+
+ATUALIZAÇÃO!!!!
+
+Não precisamos mais mockar a Factory inteira, ou seja, não precisamos mais criar a classe MockitoStubFactory. Basta colocar na classe de teste o:
+
+@Singleton
+@Replaces(bean = KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class)
+fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.java)
+
+
+Agora podemos cirar na classe teste uma property do tipo client gRPC, no caso:
+@field:Inject
+lateinit var grpcClient: KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub
+
+Veja como ficou a classe de teste completa utilizando mock:
+
+@MicronautTest
+internal class RegistraChaveControllerTest(
+
+) {
+    @field:Inject
+    @field:Client("/")
+    lateinit var clientHttp: HttpClient
+
+    @field:Inject
+    lateinit var grpcClient: KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub
+
+
+    @Test
+    fun `deve ser retornado um httpstatus created`() {
+
+        //Cenario
+        val chaveRequestHttp =
+            RegistraChaveForm(TipoChaveRequest.EMAIL, "yuri@gmail.com", TipoContaRequest.CONTA_CORRENTE)
+        val requestHttp = HttpRequest.POST("/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix", chaveRequestHttp)
+
+        val requestGrpc = RegistraChaveRequest.newBuilder()
+            .setIdentificadorCliente("5260263c-a3c1-4727-ae32-3bdb2538841b")
+            .setTipoChaveMessage(TipoChaveMessage.EMAIL)
+            .setTipoContaMessage(TipoContaMessage.CONTA_CORRENTE)
+            .build()
+
+        val pixIdCriado = UUID.randomUUID().toString()
+        val responseGrpc = RegistraChaveResponse.newBuilder()
+            .setPixId(pixIdCriado)
+            .build()
+
+        //Mockito.`when`(grpcClient.registraChave(requestGrpc)).thenReturn(responseGrpc)
+        Mockito.`when`(grpcClient.registraChave(Mockito.any())).thenReturn(responseGrpc)
+
+        //Ação
+        val responseHttp = clientHttp.toBlocking().exchange(requestHttp, String::class.java)
+
+        //Verificação
+        Assertions.assertEquals(HttpStatus.CREATED, responseHttp.status)
+        Assertions.assertTrue(responseHttp.body().contains(pixIdCriado))
+
+    }
+
+@Singleton
+@Replaces(bean = KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class)
+fun stubMock() = Mockito.mock(KeyManagerGrpcServiceGrpc.KeyManagerGrpcServiceBlockingStub::class.java)
+
+
+}
+
+A linha:
+
+//Mockito.`when`(grpcClient.registraChave(requestGrpc))
+.thenReturn(responseGrpc)
+
+foi comentada, pois aqui ela não funciona e esta é muito comum em outros testes. Ela não funciona porque a request que mandamos é uma classe gerada pela compilação do arquivo .proto, ou seja, não foi feita por nós! E ela não é data class e não tem como nós implementarmos os metodos Equals & Hashcode - metodos que são necessários para garantir que o mesmo será simulado somente com os mesmos valores! Com objetos IDENTICOS!
+
+

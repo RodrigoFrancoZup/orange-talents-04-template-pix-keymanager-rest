@@ -1,0 +1,22 @@
+Vamos primeiro preparar o ambiente para podermos usar o Mockito. Esse serve para simular a ação ou resultado de um objeto.
+Basta ir no arquivo build.gradle, na seção dependencies adicionar: 
+	testImplementation("org.mockito:mockito-inline:3.11.1")
+
+Agora vamos configurar para usar um outro banco no teste. Vamos usar o H2. Para isso faça:
+1) no arquivo build.gradle, na seção dependencies adicionar: 
+	 testImplementation("com.h2database:h2")
+
+2) no mesmo diretório que temos o arquivo application.properties (src/main/resource) criar o arquivo application-test.yml, esse arquivo deve conter o seguinte conteudo:
+
+datasources:
+  default:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    driverClassName: org.h2.Driver
+
+##
+# Habilita log do Contexto transacional
+##
+
+logger:
+  levels:
+    io.micronaut.transaction: DEBUG 

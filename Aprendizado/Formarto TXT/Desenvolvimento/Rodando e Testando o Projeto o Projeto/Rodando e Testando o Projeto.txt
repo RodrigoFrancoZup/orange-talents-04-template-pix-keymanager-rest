@@ -1,0 +1,11 @@
+Lembre-se, para rodar e testar nosso projeto Key-manager-rest é necessário que a aplicação Key-manager-rest e a aplicação Key-manager-grpc estejam rodando ao mesmo tempo! 
+
+Após isso, será possivel ir no Postman para consumir o serviço da API Key-manager-rest  e criar uma requisição POST para: localhost:8080/cliente/5260263c-a3c1-4727-ae32-3bdb2538841b/pix
+
+Com o Body (JSON):
+
+{
+    "tipoChave":"CELULAR",
+    "chave":"+5535999990000",
+    "tipoConta": "CONTA_CORRENTE"
+}
